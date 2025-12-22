@@ -18,7 +18,6 @@ from langchain.chains.history_aware_retriever import create_history_aware_retrie
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-
 # --- CATEGORIZATION HELPERS ---
 def get_all_ipo_names():
     categorized = {"Mainboard": [], "SME": []}
@@ -36,7 +35,6 @@ def get_all_ipo_names():
     except Exception as e:
         return {"Mainboard": [], "SME": []}
 
-
 def get_concurrent_ipos(target_name, category_filter="All"):
     """Returns active IPOs filtered by category."""
     peers = []
@@ -45,19 +43,17 @@ def get_concurrent_ipos(target_name, category_filter="All"):
         for d in r.json().get("data", []):
             name = BeautifulSoup(d.get("name", ""), "html.parser").get_text(" ", strip=True)
             status = d.get("status", "").lower()
-
+            
             if name == target_name: continue
             if "listed" in status: continue
-
+            
             is_sme = "SME" in name
             if category_filter == "Mainboard" and is_sme: continue
             if category_filter == "SME" and not is_sme: continue
-
+            
             peers.append(name)
         return peers
-    except:
-        return []
-
+    except: return []
 
 # --- WORKER 1: IPO DETAILS ---
 def fetch_ipo_details(ipo_name: str):
@@ -67,7 +63,7 @@ def fetch_ipo_details(ipo_name: str):
         data = r.json().get("data", [])
         clean_names = [BeautifulSoup(d.get("name", ""), "html.parser").get_text(" ", strip=True) for d in data]
         match = process.extractOne(ipo_name, clean_names, scorer=fuzz.QRatio)
-
+        
         if match and match[1] > 80:
             target = match[0]
             for d in data:
@@ -80,6 +76,7 @@ def fetch_ipo_details(ipo_name: str):
                         "Price Band": d.get("price", "N/A"),
                         "Open Date": d.get("open", "N/A"),
                         "Close Date": d.get("close", "N/A"),
+                        "Allotment Date": d.get("allotment", "N/A"),
                         "Listing Date": d.get("listing", "N/A"),
                         "Status": d.get("status", "N/A"),
                         "Issue Size": d.get("size", "N/A")
@@ -87,7 +84,6 @@ def fetch_ipo_details(ipo_name: str):
     except Exception as e:
         return {"error": str(e)}
     return {"error": "Not Found"}
-
 
 # --- WORKER 2: SENTIMENT ---
 def fetch_sentiment(ipo_name: str, source: str = "all"):
@@ -101,19 +97,16 @@ def fetch_sentiment(ipo_name: str, source: str = "all"):
             )
             for sub in reddit.subreddit("all").search(f"{ipo_name} IPO", limit=5):
                 texts.append(f"[Reddit]: {sub.title}")
-        except:
-            pass
+        except: pass
 
     if source in ["news", "all"]:
         try:
             q = urllib.parse.quote(f"{ipo_name} IPO")
             feed = feedparser.parse(f"https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en")
             texts.extend([f"[News]: {e.title}" for e in feed.entries[:5]])
-        except:
-            pass
+        except: pass
 
     return "\n".join(texts) if texts else "No sentiment data found."
-
 
 # --- WORKER 3: RHP DOCUMENT ---
 def query_rhp(ipo_name, query, vector_store=None):
@@ -140,15 +133,14 @@ def query_rhp(ipo_name, query, vector_store=None):
     qa_prompt = ChatPromptTemplate.from_messages(
         [("system", qa_system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")]
     )
-
+    
     chain = create_retrieval_chain(history_aware_retriever, create_stuff_documents_chain(llm, qa_prompt))
-
+    
     try:
         response = chain.invoke({"input": query, "chat_history": []})
         return f"[Source: RHP Document]\n{response['answer']}"
     except Exception as e:
         return f"Error querying RHP: {str(e)}"
-
 
 # --- PDF & VECTOR STORE HELPERS ---
 def download_pdf_logic(details):
@@ -157,7 +149,7 @@ def download_pdf_logic(details):
     slug = details.get('slug')
     os.makedirs("pdfs", exist_ok=True)
     save_path = os.path.join("pdfs", f"{ipo_id}.pdf")
-
+    
     if os.path.exists(save_path): return save_path
 
     page_url = f"https://www.ipopremium.in/view/ipo/{ipo_id}/{slug}"
@@ -165,28 +157,28 @@ def download_pdf_logic(details):
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(page_url, headers=headers)
         soup = BeautifulSoup(r.content, "html.parser")
-
+        
         target_url = None
         candidates = []
         for a in soup.find_all("a", href=True):
             text = a.get_text().lower()
             if "rhp" in text or "drhp" in text or "anchor" in text:
                 candidates.append({"link": a["href"], "text": text})
-
-        # Prioritize RHP > DRHP > Anchor (Fixed Syntax Logic)
-        for c in candidates:
-            if "rhp" in c["text"] and "drhp" not in c["text"]:
+        
+        # Prioritize RHP > DRHP > Anchor
+        for c in candidates: 
+            if "rhp" in c["text"] and "drhp" not in c["text"]: 
                 target_url = c["link"]
                 break
-
+        
         if not target_url:
-            for c in candidates:
-                if "drhp" in c["text"]:
+            for c in candidates: 
+                if "drhp" in c["text"]: 
                     target_url = c["link"]
                     break
-
+        
         if not target_url:
-            target_url = f"https://assets.ipopremium.in/images/ipo/{ipo_id}_rhp.pdf"  # Fallback
+            target_url = f"https://assets.ipopremium.in/images/ipo/{ipo_id}_rhp.pdf" # Fallback
 
         if target_url:
             if not target_url.startswith("http"): target_url = "https://www.ipopremium.in" + target_url
@@ -194,23 +186,26 @@ def download_pdf_logic(details):
             if pdf_resp.status_code == 200:
                 with open(save_path, "wb") as f: f.write(pdf_resp.content)
                 return save_path
-    except:
-        pass
+    except: pass
     return None
 
-
 def build_vs_logic(pdf_path):
+    """
+    Builds Vector Store using EphemeralClient (RAM-Only).
+    This fixes the 'Tenant' and 'SQLite' errors on Streamlit Cloud.
+    """
     emb = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     loader = PyMuPDFLoader(pdf_path)
     docs = loader.load()
     splits = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(docs)
-
-    db_path = "./chroma_db_storage"
-    if os.path.exists(db_path):
-        try:
-            shutil.rmtree(db_path)
-        except:
-            pass
-
-    client = chromadb.PersistentClient(path=db_path)
-    return Chroma.from_documents(documents=splits, embedding=emb, client=client, collection_name="ipo_collection")
+    
+    # --- CLOUD FIX: USE EPHEMERAL CLIENT ---
+    # This runs in RAM, bypassing all file system permissions and sqlite versions.
+    client = chromadb.EphemeralClient()
+    
+    return Chroma.from_documents(
+        documents=splits, 
+        embedding=emb, 
+        client=client, 
+        collection_name="ipo_collection"
+    )
