@@ -4,13 +4,13 @@ import requests
 import praw
 import feedparser
 import urllib.parse
-import chromadb
 from bs4 import BeautifulSoup
 from rapidfuzz import process, fuzz
-from langchain_community.tools import DuckDuckGoSearchRun
+# --- SWITCH TO FAISS (RAM DB) ---
+from langchain_community.vectorstores import FAISS 
+# --------------------------------
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from langchain.chains.retrieval import create_retrieval_chain
@@ -76,7 +76,6 @@ def fetch_ipo_details(ipo_name: str):
                         "Price Band": d.get("price", "N/A"),
                         "Open Date": d.get("open", "N/A"),
                         "Close Date": d.get("close", "N/A"),
-                        "Allotment Date": d.get("allotment", "N/A"),
                         "Listing Date": d.get("listing", "N/A"),
                         "Status": d.get("status", "N/A"),
                         "Issue Size": d.get("size", "N/A")
@@ -144,7 +143,6 @@ def query_rhp(ipo_name, query, vector_store=None):
 
 # --- PDF & VECTOR STORE HELPERS ---
 def download_pdf_logic(details):
-    """Scrapes the page to find the best PDF link."""
     ipo_id = details.get('id')
     slug = details.get('slug')
     os.makedirs("pdfs", exist_ok=True)
@@ -178,7 +176,7 @@ def download_pdf_logic(details):
                     break
         
         if not target_url:
-            target_url = f"https://assets.ipopremium.in/images/ipo/{ipo_id}_rhp.pdf" # Fallback
+            target_url = f"https://assets.ipopremium.in/images/ipo/{ipo_id}_rhp.pdf" 
 
         if target_url:
             if not target_url.startswith("http"): target_url = "https://www.ipopremium.in" + target_url
@@ -191,7 +189,7 @@ def download_pdf_logic(details):
 
 def build_vs_logic(pdf_path):
     """
-    Builds Vector Store using EphemeralClient (RAM-Only).
+    Builds Vector Store using FAISS (RAM-Only).
     This fixes the 'Tenant' and 'SQLite' errors on Streamlit Cloud.
     """
     emb = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -199,13 +197,6 @@ def build_vs_logic(pdf_path):
     docs = loader.load()
     splits = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(docs)
     
-    # --- CLOUD FIX: USE EPHEMERAL CLIENT ---
-    # This runs in RAM, bypassing all file system permissions and sqlite versions.
-    client = chromadb.EphemeralClient()
-    
-    return Chroma.from_documents(
-        documents=splits, 
-        embedding=emb, 
-        client=client, 
-        collection_name="ipo_collection"
-    )
+    # --- FIXED: USE FAISS INSTEAD OF CHROMA ---
+    # FAISS runs in memory and doesn't care about SQLite versions.
+    return FAISS.from_documents(splits, emb)
