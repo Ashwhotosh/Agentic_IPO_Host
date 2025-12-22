@@ -1,11 +1,27 @@
-# --- CLOUD COMPATIBILITY PATCH ---
-__import__('pysqlite3')
+# --- CLOUD COMPATIBILITY PATCH (MUST BE AT THE VERY TOP) ---
+import os
+import shutil
 import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-# ---------------------------------
+
+# 1. Force-use the newer SQLite (Fixes version errors)
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
+# 2. NUCLEAR FIX: Wipe the Database on Startup
+# This fixes the "Could not connect to tenant" error by removing corrupted/locked files.
+DB_PATH = "./chroma_db_storage"
+if os.path.exists(DB_PATH):
+    try:
+        shutil.rmtree(DB_PATH)
+    except Exception as e:
+        print(f"⚠️ Could not clear DB: {e}")
+
+# -----------------------------------------------------------
 
 import streamlit as st
-import os
 import warnings
 import logging
 
