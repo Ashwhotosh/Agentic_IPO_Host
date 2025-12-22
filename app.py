@@ -1,40 +1,9 @@
-# --- CLOUD COMPATIBILITY PATCH (MUST BE AT THE VERY TOP) ---
-import os
-import shutil
-import sys
-
-# 1. Force-use the newer SQLite (Fixes version errors)
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
-# 2. NUCLEAR FIX: Wipe the Database on Startup
-# This fixes the "Could not connect to tenant" error by removing corrupted/locked files.
-DB_PATH = "./chroma_db_storage"
-if os.path.exists(DB_PATH):
-    try:
-        shutil.rmtree(DB_PATH)
-    except Exception as e:
-        print(f"⚠️ Could not clear DB: {e}")
-
-# -----------------------------------------------------------
-
 import streamlit as st
-import warnings
-import logging
-
-# Silence Noise
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
-warnings.filterwarnings("ignore")
-logging.getLogger('chromadb').setLevel(logging.ERROR)
-
+import os
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
 
-
-# Libraries
+# Import Libraries
 from tools_library import (
     fetch_ipo_details, download_pdf_logic, build_vs_logic, 
     get_all_ipo_names, get_concurrent_ipos
@@ -90,7 +59,7 @@ with st.sidebar:
             
             if "id" in details:
                 st.write("📥 Fetching RHP...")
-                pdf = download_pdf_logic(details) # Fixed call
+                pdf = download_pdf_logic(details)
                 if pdf:
                     st.write("🧠 Building Vector Brain...")
                     st.session_state.vector_store = build_vs_logic(pdf)
