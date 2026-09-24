@@ -24,7 +24,7 @@ def execute_brain(user_query, ipo_name, vector_store):
         yield "❌ Error: GROQ_API_KEY missing."
         return
 
-    llm = ChatGroq(api_key=api_key, model="llama-3.3-70b-versatile", temperature=0)
+    llm = ChatGroq(api_key=api_key, model="qwen/qwen3.8-27b", temperature=0, max_tokens=400)
 
     # 1. Planning
     structured_llm = llm.with_structured_output(Plan)

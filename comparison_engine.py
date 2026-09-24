@@ -29,7 +29,7 @@ def execute_peer_comparison(target_ipo, selected_peers, vector_store):
         }
 
     yield "⚖️ **Phase 3: Calculating Rankings...**"
-    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="llama-3.3-70b-versatile", temperature=0.1)
+    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=400)
 
     data_str = json.dumps(market_data, indent=2, default=str)
 

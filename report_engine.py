@@ -11,6 +11,8 @@ def generate_section(section_title, specific_questions, vector_store, ipo_name, 
     raw_context = []
     for q in specific_questions:
         ans = query_rhp(ipo_name, q, vector_store=vector_store)
+        if "Error querying RHP" in ans:
+            return f"## {section_title}\n\n⚠️ **API Error during RHP Analysis**\n\nThe AI model encountered a technical error while reading the document:\n`{ans}`\n\nPlease check your API keys and permissions."
         raw_context.append(f"Q: {q}\nA: {ans}")
 
     context_str = "\n\n".join(raw_context)
@@ -18,13 +20,16 @@ def generate_section(section_title, specific_questions, vector_store, ipo_name, 
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "You are a Senior Equity Analyst. Write a detailed section based on the raw data. Use tables and bullets."),
-        ("human", f"**Section:** {section_title}\n**Data:**\n{context_str}\n\nWrite the section content.")
+        ("human", "**Section:** {section_title}\n**Data:**\n{context_str}\n\nWrite the section content.")
     ])
-    return (prompt | llm | StrOutputParser()).invoke({})
+    return (prompt | llm | StrOutputParser()).invoke({
+        "section_title": section_title,
+        "context_str": context_str
+    })
 
 
 def generate_deep_dive_report(ipo_name, vector_store):
-    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="llama-3.3-70b-versatile", temperature=0.2)
+    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="openai/gpt-oss-120b", temperature=0.2, max_tokens=300)
     yield "📊 **Initializing Deep Dive Analysis...**"
 
     market_data = fetch_ipo_details(ipo_name)

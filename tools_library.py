@@ -6,6 +6,7 @@ import feedparser
 import urllib.parse
 from bs4 import BeautifulSoup
 from rapidfuzz import process, fuzz
+import cloudscraper
 # --- SWITCH TO FAISS (RAM DB) ---
 from langchain_community.vectorstores import FAISS 
 # --------------------------------
@@ -13,17 +14,54 @@ from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # --- CATEGORIZATION HELPERS ---
+def _scrape_ipo_data():
+    try:
+        scraper = cloudscraper.create_scraper()
+        r = scraper.get("https://www.ipopremium.in/", timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        data = []
+        rows = soup.select("table tbody tr")
+        for row in rows:
+            cols = row.select("td")
+            if len(cols) < 7: continue
+            
+            a_tag = cols[0].find("a")
+            if not a_tag: continue
+            
+            name = a_tag.get_text(strip=True)
+            href = a_tag.get("href", "")
+            
+            parts = [p for p in href.split("/") if p]
+            ipo_id = parts[-2] if len(parts) >= 2 else ""
+            slug = parts[-1] if len(parts) >= 1 else ""
+            
+            data.append({
+                "id": ipo_id,
+                "slug": slug,
+                "name": name,
+                "premium": cols[2].get_text(strip=True),
+                "price": cols[5].get_text(strip=True),
+                "open": cols[3].get_text(strip=True),
+                "close": cols[4].get_text(strip=True),
+                "listing": cols[6].get_text(strip=True),
+                "status": "upcoming",
+                "size": "N/A"
+            })
+        return data
+    except:
+        return []
+
 def get_all_ipo_names():
     categorized = {"Mainboard": [], "SME": []}
     try:
-        r = requests.get("https://www.ipopremium.in/ipo", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        data = r.json().get("data", [])
+        data = _scrape_ipo_data()
         for d in data:
             raw_name = d.get("name", "")
             clean_name = BeautifulSoup(raw_name, "html.parser").get_text(" ", strip=True)
@@ -39,8 +77,7 @@ def get_concurrent_ipos(target_name, category_filter="All"):
     """Returns active IPOs filtered by category."""
     peers = []
     try:
-        r = requests.get("https://www.ipopremium.in/ipo", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        for d in r.json().get("data", []):
+        for d in _scrape_ipo_data():
             name = BeautifulSoup(d.get("name", ""), "html.parser").get_text(" ", strip=True)
             status = d.get("status", "").lower()
             
@@ -59,8 +96,7 @@ def get_concurrent_ipos(target_name, category_filter="All"):
 def fetch_ipo_details(ipo_name: str):
     """Fetches GMP, Dates, Price, and SLUG."""
     try:
-        r = requests.get("https://www.ipopremium.in/ipo", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        data = r.json().get("data", [])
+        data = _scrape_ipo_data()
         clean_names = [BeautifulSoup(d.get("name", ""), "html.parser").get_text(" ", strip=True) for d in data]
         match = process.extractOne(ipo_name, clean_names, scorer=fuzz.QRatio)
         
@@ -112,7 +148,7 @@ def query_rhp(ipo_name, query, vector_store=None):
     if not vector_store:
         return "⚠️ RHP Document is not loaded."
 
-    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="llama-3.1-8b-instant")
+    llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model="qwen/qwen3.8-27b", max_tokens=60)
     retriever = vector_store.as_retriever(search_kwargs={"k": 5})
 
     context_q_system_prompt = (
@@ -152,8 +188,8 @@ def download_pdf_logic(details):
 
     page_url = f"https://www.ipopremium.in/view/ipo/{ipo_id}/{slug}"
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(page_url, headers=headers)
+        scraper = cloudscraper.create_scraper()
+        r = scraper.get(page_url, timeout=15)
         soup = BeautifulSoup(r.content, "html.parser")
         
         target_url = None
@@ -180,7 +216,7 @@ def download_pdf_logic(details):
 
         if target_url:
             if not target_url.startswith("http"): target_url = "https://www.ipopremium.in" + target_url
-            pdf_resp = requests.get(target_url, headers=headers, stream=True)
+            pdf_resp = scraper.get(target_url, stream=True, timeout=15)
             if pdf_resp.status_code == 200:
                 with open(save_path, "wb") as f: f.write(pdf_resp.content)
                 return save_path
