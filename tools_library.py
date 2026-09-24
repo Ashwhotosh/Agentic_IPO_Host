@@ -23,8 +23,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 # --- CATEGORIZATION HELPERS ---
 def _scrape_ipo_data():
     try:
-        scraper = cloudscraper.create_scraper()
+        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
         r = scraper.get("https://www.ipopremium.in/", timeout=15)
+        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         data = []
         rows = soup.select("table tbody tr")
@@ -55,8 +56,8 @@ def _scrape_ipo_data():
                 "size": "N/A"
             })
         return data
-    except:
-        return []
+    except Exception as e:
+        return [{"id": "", "slug": "", "name": f"Scrape Error: {str(e)}", "premium": "", "price": "", "open": "", "close": "", "listing": "", "status": "upcoming", "size": ""}]
 
 def get_all_ipo_names():
     categorized = {"Mainboard": [], "SME": []}
