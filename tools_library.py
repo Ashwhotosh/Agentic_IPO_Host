@@ -6,7 +6,7 @@ import feedparser
 import urllib.parse
 from bs4 import BeautifulSoup
 from rapidfuzz import process, fuzz
-import cloudscraper
+from curl_cffi import requests
 # --- SWITCH TO FAISS (RAM DB) ---
 from langchain_community.vectorstores import FAISS 
 # --------------------------------
@@ -23,8 +23,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 # --- CATEGORIZATION HELPERS ---
 def _scrape_ipo_data():
     try:
-        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
-        r = scraper.get("https://www.ipopremium.in/", timeout=15)
+        r = requests.get("https://www.ipopremium.in/", timeout=15, impersonate="chrome110")
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         data = []
@@ -189,8 +188,7 @@ def download_pdf_logic(details):
 
     page_url = f"https://www.ipopremium.in/view/ipo/{ipo_id}/{slug}"
     try:
-        scraper = cloudscraper.create_scraper()
-        r = scraper.get(page_url, timeout=15)
+        r = requests.get(page_url, timeout=15, impersonate="chrome110")
         soup = BeautifulSoup(r.content, "html.parser")
         
         target_url = None
@@ -217,7 +215,7 @@ def download_pdf_logic(details):
 
         if target_url:
             if not target_url.startswith("http"): target_url = "https://www.ipopremium.in" + target_url
-            pdf_resp = scraper.get(target_url, stream=True, timeout=15)
+            pdf_resp = requests.get(target_url, stream=True, timeout=15, impersonate="chrome110")
             if pdf_resp.status_code == 200:
                 with open(save_path, "wb") as f: f.write(pdf_resp.content)
                 return save_path
